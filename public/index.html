@@ -6,7 +6,6 @@
   <title>Reward Poin Mini App</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src='//whephiwums.com/sdk.js' data-zone='9244919' data-sdk='show_9244919'></script>
   <style>
     .coin-animation {
       animation: coinSpin 1s ease-in-out;
@@ -37,7 +36,7 @@
 
       <!-- Instruction and Error Message -->
       <p class="text-sm text-gray-600 mt-2">Tonton iklan selama 15 detik hingga selesai untuk mendapatkan poin.</p>
-      <p id="errorMsg" class="text-red-500 text-sm mt-2 hidden">Gagal memuat iklan atau iklan ditutup sebelum selesai. Coba lagi.</p>
+      <p id="errorMsg" class="text-red-500 text-sm mt-2 hidden"></p>
 
       <!-- Refresh Data Button -->
       <button id="refreshBtn" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 px-4 rounded-lg mt-4 transition duration-300">
@@ -87,13 +86,18 @@
           }
           console.log('Telegram Web App initialized. User:', userName, 'ID:', userId, 'Platform:', window.navigator.userAgent);
           if (userId) {
-            loadDataFromJson(userId);
+            loadDataFromJson(userId, true);
+          } else {
+            console.error('No userId found');
+            showError('Gagal menginisialisasi pengguna. Buka melalui Telegram.');
           }
         } catch (e) {
           console.error('Failed to initialize Telegram Web App:', e);
+          showError('Gagal menginisialisasi aplikasi. Coba lagi.');
         }
       } else {
-        console.warn('Telegram Web App not available. Running outside Telegram environment.');
+        console.warn('Telegram Web App not available.');
+        showError('Aplikasi harus dijalankan melalui Telegram.');
       }
       document.getElementById('username').innerText = `Halo, ${userName}!`;
     }
@@ -104,13 +108,18 @@
     let points = parseInt(localStorage.getItem('points')) || 0;
     let history = JSON.parse(localStorage.getItem('history')) || [];
 
+    // Show error message
+    function showError(message) {
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.innerText = message;
+      errorMsg.classList.remove('hidden');
+      setTimeout(() => errorMsg.classList.add('hidden'), 5000);
+    }
+
     // Update points display
     function updatePoints() {
       document.getElementById('points').innerText = `🪙 ${points} Poin`;
       localStorage.setItem('points', points);
-      if (userId && telegramInitialized) {
-        saveDataToJson(userId, points, history);
-      }
     }
 
     // Update history display
@@ -124,82 +133,149 @@
         historyList.appendChild(li);
       });
       localStorage.setItem('history', JSON.stringify(history));
-      if (userId && telegramInitialized) {
-        saveDataToJson(userId, points, history);
-      }
     }
 
-    // Load data from JSON
-    async function loadDataFromJson(userId) {
-      try {
-        const response = await fetch('/api/load-data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache'
-          },
-          body: JSON.stringify({ userId })
-        });
-        const data = await response.json();
-        if (data.success && data.data) {
-          points = data.data.points || 0;
-          history = data.data.history || [];
-          updatePoints();
-          updateHistory();
-          console.log('Data loaded from JSON:', data.data);
-        } else {
-          console.log('No data found for user, using localStorage');
+    // Load data from JSON with retry
+    async function loadDataFromJson(userId, isInitial = false) {
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          console.log(`Loading data for userId: ${userId}, Attempt: ${4 - retries}`);
+          const response = await fetch('/api/load-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache'
+            },
+            body: JSON.stringify({ userId })
+          });
+          const data = await response.json();
+          if (data.success && data.data) {
+            points = data.data.points || 0;
+            history = data.data.history || [];
+            updatePoints();
+            updateHistory();
+            console.log('Data loaded from JSON:', data.data);
+            return true;
+          } else {
+            console.log('No data found for userId:', userId);
+            if (isInitial) {
+              updatePoints();
+              updateHistory();
+            }
+            return false;
+          }
+        } catch (e) {
+          console.error('Failed to load data from JSON:', e);
+          retries--;
+          if (retries === 0) {
+            showError('Gagal memuat data. Periksa koneksi internet.');
+            if (isInitial) {
+              updatePoints();
+              updateHistory();
+            }
+            return false;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-      } catch (e) {
-        console.error('Failed to load data from JSON:', e);
-        document.getElementById('errorMsg').innerText = 'Gagal memuat data. Coba segarkan.';
-        document.getElementById('errorMsg').classList.remove('hidden');
       }
     }
 
-    // Save data to JSON
+    // Save data to JSON with retry
     async function saveDataToJson(userId, points, history) {
-      try {
-        const response = await fetch('/api/save-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, points, history })
-        });
-        const data = await response.json();
-        if (data.success) {
-          console.log('Data saved to JSON for userId:', userId);
-        } else {
-          console.error('Failed to save data to JSON:', data.error);
-          document.getElementById('errorMsg').innerText = 'Gagal menyimpan data. Coba lagi.';
-          document.getElementById('errorMsg').classList.remove('hidden');
+      if (!userId) {
+        console.error('Cannot save data: userId is missing');
+        showError('Gagal menyimpan: Pengguna tidak terdeteksi.');
+        return false;
+      }
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          console.log(`Saving data for userId: ${userId}, Attempt: ${4 - retries}`);
+          const response = await fetch('/api/save-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, points, history })
+          });
+          const data = await response.json();
+          if (data.success) {
+            console.log('Data saved to JSON for userId:', userId);
+            return true;
+          } else {
+            console.error('Failed to save data to JSON:', data.error);
+            retries--;
+            if (retries === 0) {
+              showError(`Gagal menyimpan data: ${data.error}`);
+              return false;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to save data to JSON:', e);
+          retries--;
+          if (retries === 0) {
+            showError('Gagal menyimpan data. Periksa koneksi internet.');
+            return false;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-      } catch (e) {
-        console.error('Failed to save data to JSON:', e);
-        document.getElementById('errorMsg').innerText = 'Gagal menyimpan data. Coba lagi.';
-        document.getElementById('errorMsg').classList.remove('hidden');
       }
     }
 
     // Refresh data button
-    document.getElementById('refreshBtn').addEventListener('click', () => {
-      if (userId) {
-        console.log('Refreshing data for userId:', userId);
-        loadDataFromJson(userId);
-      } else {
+    document.getElementById('refreshBtn').addEventListener('click', async () => {
+      if (!userId) {
         console.warn('No userId available for refresh');
-        document.getElementById('errorMsg').innerText = 'Gagal menyegarkan. Buka melalui Telegram.';
-        document.getElementById('errorMsg').classList.remove('hidden');
+        showError('Gagal menyegarkan: Buka melalui Telegram.');
+        return;
+      }
+      console.log('Refreshing data for userId:', userId);
+      const success = await loadDataFromJson(userId);
+      if (success) {
+        showError('Data berhasil disegarkan.');
+      } else {
+        showError('Gagal menyegarkan data. Coba lagi.');
       }
     });
 
+    // Load Monetag script dynamically
+    let monetagLoaded = false;
+    function loadMonetagScript() {
+      if (monetagLoaded) return;
+      const script = document.createElement('script');
+      script.src = '//whephiwums.com/sdk.js';
+      script.setAttribute('data-zone', '9244919');
+      script.setAttribute('data-sdk', 'show_9244919');
+      document.head.appendChild(script);
+      script.onload = () => {
+        console.log('Monetag script loaded');
+        monetagLoaded = true;
+      };
+      script.onerror = () => {
+        console.error('Failed to load Monetag script');
+        showError('Gagal memuat iklan. Coba lagi.');
+      };
+    }
+
     // Show ad and handle points
     let adWatching = false;
-    document.getElementById('watchAdBtn').addEventListener('click', (event) => {
-      event.preventDefault(); // Prevent unintended touch events
+    document.getElementById('watchAdBtn').addEventListener('click', async (event) => {
+      event.preventDefault();
       if (adWatching) {
         console.log('Ad already in progress');
         return;
       }
+
+      if (!userId) {
+        console.error('Cannot proceed: userId is missing');
+        showError('Gagal memuat iklan: Pengguna tidak terdeteksi.');
+        return;
+      }
+
+      if (!monetagLoaded) {
+        loadMonetagScript();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
       const btn = document.getElementById('watchAdBtn');
       const errorMsg = document.getElementById('errorMsg');
       btn.disabled = true;
@@ -213,24 +289,28 @@
           show_9244919({
             type: 'inApp',
             inAppSettings: {
-              frequency: 1000, // High frequency to prevent auto-trigger
+              frequency: 1000,
               capping: 0.1,
-              interval: 60, // 60 seconds between ads
+              interval: 60,
               timeout: 5,
-              everyPage: false // Prevent auto-trigger on page load
+              everyPage: false
             }
           });
         } else {
           throw new Error('Monetag SDK not loaded');
         }
 
-        setTimeout(() => {
+        setTimeout(async () => {
           if (adWatching) {
             points += 1;
             const date = new Date().toLocaleString();
             history.push(`Iklan ditonton - +1 Poin pada ${date}`);
             updatePoints();
             updateHistory();
+            const saved = await saveDataToJson(userId, points, history);
+            if (!saved) {
+              showError('Poin bertambah, tetapi gagal disinkronkan ke server.');
+            }
 
             const pointsDisplay = document.getElementById('points');
             pointsDisplay.classList.add('coin-animation');
@@ -242,8 +322,7 @@
         }, 15000);
       } catch (e) {
         console.error('Failed to show ad:', e);
-        errorMsg.innerText = 'Gagal memuat iklan. Coba lagi.';
-        errorMsg.classList.remove('hidden');
+        showError('Gagal memuat iklan. Coba lagi.');
         adWatching = false;
         btn.disabled = false;
         btn.innerHTML = '▶️ Tonton Iklan +1 Poin';

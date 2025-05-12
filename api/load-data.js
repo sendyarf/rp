@@ -12,16 +12,18 @@ module.exports = async (req, res) => {
     const filename = 'users.json';
     let data = null;
 
-    // Ambil file JSON
     const blobs = await list();
     const blob = blobs.blobs.find(b => b.pathname === filename);
     if (blob) {
       const response = await fetch(blob.url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch blob: ${response.statusText}`);
+      }
       const jsonData = await response.json();
-      data = jsonData.users[userId];
+      data = jsonData.users && jsonData.users[userId];
       console.log('Data loaded for userId:', userId, 'Data:', data);
     } else {
-      console.log('No JSON file found');
+      console.log('No users.json file found');
     }
 
     if (data) {
