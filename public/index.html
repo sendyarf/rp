@@ -39,19 +39,10 @@
       <p class="text-sm text-gray-600 mt-2">Tonton iklan selama 15 detik hingga selesai untuk mendapatkan poin.</p>
       <p id="errorMsg" class="text-red-500 text-sm mt-2 hidden">Gagal memuat iklan atau iklan ditutup sebelum selesai. Coba lagi.</p>
 
-      <!-- Sync Data Section -->
-      <div class="mt-6">
-        <h2 class="text-lg font-semibold">Sinkronisasi Manual (Cadangan)</h2>
-        <button id="exportBtn" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 px-4 rounded-lg mt-2 transition duration-300">
-          Ekspor Data
-        </button>
-        <div class="mt-2">
-          <input id="importCode" type="text" placeholder="Masukkan kode sinkronisasi" class="w-full border border-gray-300 rounded-lg p-2 text-gray-800">
-          <button id="importBtn" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 px-4 rounded-lg mt-2 transition duration-300">
-            Impor Data
-          </button>
-        </div>
-      </div>
+      <!-- Refresh Data Button -->
+      <button id="refreshBtn" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 px-4 rounded-lg mt-4 transition duration-300">
+        Segarkan Data
+      </button>
 
       <!-- History Section -->
       <div class="mt-6">
@@ -94,7 +85,7 @@
             userName = user.username ? `@${user.username}` : user.first_name || 'Pengguna';
             userId = user.id;
           }
-          console.log('Telegram Web App initialized. User:', userName, 'ID:', userId);
+          console.log('Telegram Web App initialized. User:', userName, 'ID:', userId, 'Platform:', window.navigator.userAgent);
           if (userId) {
             loadDataFromJson(userId);
           }
@@ -143,7 +134,10 @@
       try {
         const response = await fetch('/api/load-data', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
           body: JSON.stringify({ userId })
         });
         const data = await response.json();
@@ -158,6 +152,8 @@
         }
       } catch (e) {
         console.error('Failed to load data from JSON:', e);
+        document.getElementById('errorMsg').innerText = 'Gagal memuat data. Coba segarkan.';
+        document.getElementById('errorMsg').classList.remove('hidden');
       }
     }
 
@@ -171,19 +167,39 @@
         });
         const data = await response.json();
         if (data.success) {
-          console.log('Data saved to JSON');
+          console.log('Data saved to JSON for userId:', userId);
         } else {
           console.error('Failed to save data to JSON:', data.error);
+          document.getElementById('errorMsg').innerText = 'Gagal menyimpan data. Coba lagi.';
+          document.getElementById('errorMsg').classList.remove('hidden');
         }
       } catch (e) {
         console.error('Failed to save data to JSON:', e);
+        document.getElementById('errorMsg').innerText = 'Gagal menyimpan data. Coba lagi.';
+        document.getElementById('errorMsg').classList.remove('hidden');
       }
     }
 
+    // Refresh data button
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      if (userId) {
+        console.log('Refreshing data for userId:', userId);
+        loadDataFromJson(userId);
+      } else {
+        console.warn('No userId available for refresh');
+        document.getElementById('errorMsg').innerText = 'Gagal menyegarkan. Buka melalui Telegram.';
+        document.getElementById('errorMsg').classList.remove('hidden');
+      }
+    });
+
     // Show ad and handle points
     let adWatching = false;
-    document.getElementById('watchAdBtn').addEventListener('click', () => {
-      if (adWatching) return;
+    document.getElementById('watchAdBtn').addEventListener('click', (event) => {
+      event.preventDefault(); // Prevent unintended touch events
+      if (adWatching) {
+        console.log('Ad already in progress');
+        return;
+      }
       const btn = document.getElementById('watchAdBtn');
       const errorMsg = document.getElementById('errorMsg');
       btn.disabled = true;
@@ -193,17 +209,17 @@
 
       try {
         if (typeof show_9244919 === 'function') {
+          console.log('Triggering Monetag ad');
           show_9244919({
             type: 'inApp',
             inAppSettings: {
-              frequency: 2,
+              frequency: 1000, // High frequency to prevent auto-trigger
               capping: 0.1,
-              interval: 30,
+              interval: 60, // 60 seconds between ads
               timeout: 5,
-              everyPage: false
+              everyPage: false // Prevent auto-trigger on page load
             }
           });
-          console.log('Monetag ad triggered');
         } else {
           throw new Error('Monetag SDK not loaded');
         }
@@ -226,37 +242,11 @@
         }, 15000);
       } catch (e) {
         console.error('Failed to show ad:', e);
+        errorMsg.innerText = 'Gagal memuat iklan. Coba lagi.';
         errorMsg.classList.remove('hidden');
         adWatching = false;
         btn.disabled = false;
         btn.innerHTML = '▶️ Tonton Iklan +1 Poin';
-      }
-    });
-
-    // Export data
-    document.getElementById('exportBtn').addEventListener('click', () => {
-      const data = { points, history };
-      const code = btoa(JSON.stringify(data));
-      prompt('Salin kode ini dan kirim ke perangkat lain:', code);
-    });
-
-    // Import data
-    document.getElementById('importBtn').addEventListener('click', () => {
-      const code = document.getElementById('importCode').value;
-      try {
-        const data = JSON.parse(atob(code));
-        if (data.points >= 0 && Array.isArray(data.history)) {
-          points = data.points;
-          history = data.history;
-          updatePoints();
-          updateHistory();
-          alert('Data berhasil diimpor!');
-          document.getElementById('importCode').value = '';
-        } else {
-          alert('Kode tidak valid.');
-        }
-      } catch (e) {
-        alert('Kode tidak valid atau rusak.');
       }
     });
 
@@ -266,7 +256,7 @@
         console.log('Closing Telegram Web App');
         window.Telegram.WebApp.close();
       } else {
-        alert('Tombol tutup hanya berfungsi di lingkungan Telegram. Pastikan aplikasi dijalankan melalui bot Telegram.');
+        alert('Tombol tutup hanya berfungsi di lingkungan Telegram.');
         console.warn('Cannot close: Not in Telegram environment');
       }
     });
