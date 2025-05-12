@@ -72,6 +72,10 @@
     let userName = 'Pengguna';
     let userId = null;
     let telegramInitialized = false;
+    let points = 0;
+    let history = [];
+    let lastSyncTime = 0;
+    const syncInterval = 30000; // 30 detik
 
     function initializeTelegram() {
       if (window.Telegram && window.Telegram.WebApp) {
@@ -82,31 +86,48 @@
           const user = window.Telegram.WebApp.initDataUnsafe.user;
           if (user) {
             userName = user.username ? `@${user.username}` : user.first_name || 'Pengguna';
-            userId = user.id;
-          }
-          console.log('Telegram Web App initialized. User:', userName, 'ID:', userId, 'Platform:', window.navigator.userAgent);
-          if (userId) {
-            loadDataFromJson(userId, true);
+            userId = user.id.toString(); // Pastikan userId selalu string
+            console.log('Telegram Web App initialized. User:', userName, 'ID:', userId, 'Platform:', window.navigator.userAgent);
+            if (userId) {
+              loadDataFromServer(true);
+              // Set interval untuk sinkronisasi otomatis
+              setInterval(() => {
+                if (Date.now() - lastSyncTime > syncInterval) {
+                  loadDataFromServer(false);
+                }
+              }, syncInterval);
+            } else {
+              console.error('No userId found');
+              showError('Gagal menginisialisasi pengguna. Buka melalui Telegram.');
+            }
           } else {
-            console.error('No userId found');
-            showError('Gagal menginisialisasi pengguna. Buka melalui Telegram.');
+            console.error('No user data in Telegram WebApp');
+            showError('Gagal mendapatkan data pengguna. Pastikan membuka melalui Telegram.');
+            // Fallback untuk testing di browser
+            userId = 'test_user_' + Math.floor(Math.random() * 1000);
+            userName = 'Test User';
+            loadDataFromServer(true);
           }
         } catch (e) {
           console.error('Failed to initialize Telegram Web App:', e);
           showError('Gagal menginisialisasi aplikasi. Coba lagi.');
+          // Fallback untuk testing di browser
+          userId = 'test_user_' + Math.floor(Math.random() * 1000);
+          userName = 'Test User';
+          loadDataFromServer(true);
         }
       } else {
         console.warn('Telegram Web App not available.');
         showError('Aplikasi harus dijalankan melalui Telegram.');
+        // Fallback untuk testing di browser
+        userId = 'test_user_' + Math.floor(Math.random() * 1000);
+        userName = 'Test User';
+        loadDataFromServer(true);
       }
       document.getElementById('username').innerText = `Halo, ${userName}!`;
     }
 
     window.addEventListener('load', initializeTelegram);
-
-    // Initialize points and history
-    let points = parseInt(localStorage.getItem('points')) || 0;
-    let history = JSON.parse(localStorage.getItem('history')) || [];
 
     // Show error message
     function showError(message) {
@@ -116,10 +137,21 @@
       setTimeout(() => errorMsg.classList.add('hidden'), 5000);
     }
 
+    // Show success message
+    function showSuccess(message) {
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.innerText = message;
+      errorMsg.classList.remove('hidden');
+      errorMsg.style.color = '#10B981'; // Warna hijau
+      setTimeout(() => {
+        errorMsg.classList.add('hidden');
+        errorMsg.style.color = ''; // Reset warna
+      }, 3000);
+    }
+
     // Update points display
     function updatePoints() {
       document.getElementById('points').innerText = `🪙 ${points} Poin`;
-      localStorage.setItem('points', points);
     }
 
     // Update history display
@@ -132,11 +164,16 @@
         li.innerText = item;
         historyList.appendChild(li);
       });
-      localStorage.setItem('history', JSON.stringify(history));
     }
 
-    // Load data from JSON with retry
-    async function loadDataFromJson(userId, isInitial = false) {
+    // Load data from server with retry
+    async function loadDataFromServer(isInitial = false) {
+      if (!userId) {
+        console.error('Cannot load data: userId is missing');
+        showError('Gagal memuat data: Pengguna tidak terdeteksi.');
+        return false;
+      }
+
       let retries = 3;
       while (retries > 0) {
         try {
@@ -149,31 +186,45 @@
             },
             body: JSON.stringify({ userId })
           });
+          
           if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
           }
+          
           const data = await response.json();
+          
           if (data.success && data.data) {
             points = data.data.points || 0;
             history = data.data.history || [];
             updatePoints();
             updateHistory();
-            console.log('Data loaded from JSON:', data.data);
+            lastSyncTime = Date.now();
+            console.log('Data loaded from server:', data.data);
+            if (!isInitial) {
+              showSuccess('Data berhasil disegarkan.');
+            }
             return true;
           } else {
             console.log('No data found for userId:', userId);
             if (isInitial) {
+              // Inisialisasi data baru
+              points = 0;
+              history = [];
               updatePoints();
               updateHistory();
+              // Simpan data kosong ke server
+              await saveDataToServer();
             }
             return false;
           }
         } catch (e) {
-          console.error('Failed to load data from JSON:', e.message);
+          console.error('Failed to load data from server:', e.message);
           retries--;
           if (retries === 0) {
             showError('Gagal memuat data. Server tidak ditemukan atau koneksi bermasalah.');
             if (isInitial) {
+              points = 0;
+              history = [];
               updatePoints();
               updateHistory();
             }
@@ -184,13 +235,14 @@
       }
     }
 
-    // Save data to JSON with retry
-    async function saveDataToJson(userId, points, history) {
+    // Save data to server with retry
+    async function saveDataToServer() {
       if (!userId) {
         console.error('Cannot save data: userId is missing');
         showError('Gagal menyimpan: Pengguna tidak terdeteksi.');
         return false;
       }
+      
       let retries = 3;
       while (retries > 0) {
         try {
@@ -200,15 +252,19 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, points, history })
           });
+          
           if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
           }
+          
           const data = await response.json();
+          
           if (data.success) {
-            console.log('Data saved to JSON for userId:', userId);
+            console.log('Data saved to server for userId:', userId);
+            lastSyncTime = Date.now();
             return true;
           } else {
-            console.error('Failed to save data to JSON:', data.error);
+            console.error('Failed to save data to server:', data.error);
             retries--;
             if (retries === 0) {
               showError(`Gagal menyimpan data: ${data.error}`);
@@ -216,7 +272,7 @@
             }
           }
         } catch (e) {
-          console.error('Failed to save data to JSON:', e.message);
+          console.error('Failed to save data to server:', e.message);
           retries--;
           if (retries === 0) {
             showError('Gagal menyimpan data. Server tidak ditemukan atau koneksi bermasalah.');
@@ -234,11 +290,17 @@
         showError('Gagal menyegarkan: Buka melalui Telegram.');
         return;
       }
+      
       console.log('Refreshing data for userId:', userId);
-      const success = await loadDataFromJson(userId);
-      if (success) {
-        showError('Data berhasil disegarkan.');
-      } else {
+      document.getElementById('refreshBtn').disabled = true;
+      document.getElementById('refreshBtn').innerText = 'Menyegarkan...';
+      
+      const success = await loadDataFromServer();
+      
+      document.getElementById('refreshBtn').disabled = false;
+      document.getElementById('refreshBtn').innerText = 'Segarkan Data';
+      
+      if (!success) {
         showError('Gagal menyegarkan data. Coba lagi nanti.');
       }
     });
@@ -261,6 +323,7 @@
         showError('Gagal memuat iklan. Coba lagi.');
       };
     }
+    loadMonetagScript();
 
     // Show ad and handle points
     let adWatching = false;
@@ -308,14 +371,22 @@
 
         setTimeout(async () => {
           if (adWatching) {
+            // Muat data terbaru terlebih dahulu untuk menghindari konflik
+            await loadDataFromServer();
+            
+            // Tambahkan poin
             points += 1;
             const date = new Date().toLocaleString();
             history.push(`Iklan ditonton - +1 Poin pada ${date}`);
             updatePoints();
             updateHistory();
-            const saved = await saveDataToJson(userId, points, history);
+            
+            // Simpan ke server
+            const saved = await saveDataToServer();
             if (!saved) {
               showError('Poin bertambah, tetapi gagal disinkronkan ke server.');
+            } else {
+              showSuccess('+1 Poin berhasil ditambahkan!');
             }
 
             const pointsDisplay = document.getElementById('points');
@@ -351,9 +422,15 @@
       adWatching = false;
     });
 
-    // Initial UI update
-    updatePoints();
-    updateHistory();
+    // Sinkronisasi data saat tab menjadi aktif kembali
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && userId) {
+        if (Date.now() - lastSyncTime > syncInterval) {
+          console.log('Tab became visible, syncing data...');
+          loadDataFromServer(false);
+        }
+      }
+    });
   </script>
 </body>
 </html>
