@@ -68,7 +68,7 @@
 
   <!-- JavaScript -->
   <script>
-    // Initialize Telegram Web App
+    // Variabel global
     let userName = 'Pengguna';
     let userId = null;
     let telegramInitialized = false;
@@ -77,6 +77,7 @@
     let lastSyncTime = 0;
     const syncInterval = 30000; // 30 detik
 
+    // Inisialisasi Telegram Web App
     function initializeTelegram() {
       if (window.Telegram && window.Telegram.WebApp) {
         try {
@@ -88,76 +89,82 @@
             userName = user.username ? `@${user.username}` : user.first_name || 'Pengguna';
             userId = user.id.toString(); // Pastikan userId selalu string
             console.log('Telegram Web App initialized. User:', userName, 'ID:', userId, 'Platform:', window.navigator.userAgent);
+            
             if (userId) {
-              loadDataFromServer(true);
+              loadUserData(true);
               // Set interval untuk sinkronisasi otomatis
               setInterval(() => {
                 if (Date.now() - lastSyncTime > syncInterval) {
-                  loadDataFromServer(false);
+                  loadUserData(false);
                 }
               }, syncInterval);
             } else {
               console.error('No userId found');
-              showError('Gagal menginisialisasi pengguna. Buka melalui Telegram.');
+              showMessage('Gagal menginisialisasi pengguna. Buka melalui Telegram.', 'error');
             }
           } else {
             console.error('No user data in Telegram WebApp');
-            showError('Gagal mendapatkan data pengguna. Pastikan membuka melalui Telegram.');
+            showMessage('Gagal mendapatkan data pengguna. Pastikan membuka melalui Telegram.', 'error');
             // Fallback untuk testing di browser
             userId = 'test_user_' + Math.floor(Math.random() * 1000);
             userName = 'Test User';
-            loadDataFromServer(true);
+            loadUserData(true);
           }
         } catch (e) {
           console.error('Failed to initialize Telegram Web App:', e);
-          showError('Gagal menginisialisasi aplikasi. Coba lagi.');
+          showMessage('Gagal menginisialisasi aplikasi. Coba lagi.', 'error');
           // Fallback untuk testing di browser
           userId = 'test_user_' + Math.floor(Math.random() * 1000);
           userName = 'Test User';
-          loadDataFromServer(true);
+          loadUserData(true);
         }
       } else {
         console.warn('Telegram Web App not available.');
-        showError('Aplikasi harus dijalankan melalui Telegram.');
+        showMessage('Aplikasi harus dijalankan melalui Telegram.', 'error');
         // Fallback untuk testing di browser
         userId = 'test_user_' + Math.floor(Math.random() * 1000);
         userName = 'Test User';
-        loadDataFromServer(true);
+        loadUserData(true);
       }
       document.getElementById('username').innerText = `Halo, ${userName}!`;
     }
 
-    window.addEventListener('load', initializeTelegram);
-
-    // Show error message
-    function showError(message) {
-      const errorMsg = document.getElementById('errorMsg');
-      errorMsg.innerText = message;
-      errorMsg.classList.remove('hidden');
-      setTimeout(() => errorMsg.classList.add('hidden'), 5000);
-    }
-
-    // Show success message
-    function showSuccess(message) {
-      const errorMsg = document.getElementById('errorMsg');
-      errorMsg.innerText = message;
-      errorMsg.classList.remove('hidden');
-      errorMsg.style.color = '#10B981'; // Warna hijau
+    // Tampilkan pesan (error atau sukses)
+    function showMessage(message, type = 'error') {
+      const msgElement = document.getElementById('errorMsg');
+      msgElement.innerText = message;
+      msgElement.classList.remove('hidden');
+      
+      if (type === 'success') {
+        msgElement.style.color = '#10B981'; // Warna hijau
+      } else {
+        msgElement.style.color = '#EF4444'; // Warna merah
+      }
+      
       setTimeout(() => {
-        errorMsg.classList.add('hidden');
-        errorMsg.style.color = ''; // Reset warna
+        msgElement.classList.add('hidden');
+        msgElement.style.color = ''; // Reset warna
       }, 3000);
     }
 
-    // Update points display
-    function updatePoints() {
+    // Update tampilan poin
+    function updatePointsDisplay() {
       document.getElementById('points').innerText = `🪙 ${points} Poin`;
     }
 
-    // Update history display
-    function updateHistory() {
+    // Update tampilan riwayat
+    function updateHistoryDisplay() {
       const historyList = document.getElementById('historyList');
       historyList.innerHTML = '';
+      
+      if (history.length === 0) {
+        const li = document.createElement('li');
+        li.className = 'bg-white p-2 rounded shadow border border-gray-200 text-gray-500';
+        li.innerText = 'Belum ada riwayat poin.';
+        historyList.appendChild(li);
+        return;
+      }
+      
       history.forEach(item => {
         const li = document.createElement('li');
         li.className = 'bg-white p-2 rounded shadow border border-gray-200';
@@ -166,169 +173,169 @@
       });
     }
 
-    // Load data from server with retry
-    async function loadDataFromServer(isInitial = false) {
+    // Muat data pengguna dari server
+    async function loadUserData(isInitial = false) {
       if (!userId) {
         console.error('Cannot load data: userId is missing');
-        showError('Gagal memuat data: Pengguna tidak terdeteksi.');
+        showMessage('Gagal memuat data: Pengguna tidak terdeteksi.', 'error');
         return false;
       }
 
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          console.log(`Loading data for userId: ${userId}, Attempt: ${4 - retries}`);
-          const response = await fetch('/api/load-data', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache'
-            },
-            body: JSON.stringify({ userId })
-          });
+      try {
+        console.log(`Loading data for userId: ${userId}`);
+        const response = await fetch(`api/load-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          body: JSON.stringify({ userId })
+        });
+        
+        // Jika data tidak ditemukan (404), inisialisasi data baru
+        if (response.status === 404) {
+          console.log('No data found for userId:', userId, '- Initializing new data');
+          points = 0;
+          history = [];
+          updatePointsDisplay();
+          updateHistoryDisplay();
           
-          if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          
-          if (data.success && data.data) {
-            points = data.data.points || 0;
-            history = data.data.history || [];
-            updatePoints();
-            updateHistory();
-            lastSyncTime = Date.now();
-            console.log('Data loaded from server:', data.data);
-            if (!isInitial) {
-              showSuccess('Data berhasil disegarkan.');
-            }
+          // Simpan data kosong ke server
+          const saveResult = await saveUserData();
+          if (saveResult) {
+            console.log('Initialized new data for user:', userId);
             return true;
           } else {
-            console.log('No data found for userId:', userId);
-            if (isInitial) {
-              // Inisialisasi data baru
-              points = 0;
-              history = [];
-              updatePoints();
-              updateHistory();
-              // Simpan data kosong ke server
-              await saveDataToServer();
-            }
+            console.error('Failed to initialize new data for user:', userId);
             return false;
           }
-        } catch (e) {
-          console.error('Failed to load data from server:', e.message);
-          retries--;
-          if (retries === 0) {
-            showError('Gagal memuat data. Server tidak ditemukan atau koneksi bermasalah.');
-            if (isInitial) {
-              points = 0;
-              history = [];
-              updatePoints();
-              updateHistory();
-            }
-            return false;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
         }
+        
+        // Jika ada error lain
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        // Proses data yang berhasil dimuat
+        const data = await response.json();
+        if (data.success && data.data) {
+          points = data.data.points || 0;
+          history = data.data.history || [];
+          updatePointsDisplay();
+          updateHistoryDisplay();
+          lastSyncTime = Date.now();
+          console.log('Data loaded from server:', data.data);
+          
+          if (!isInitial) {
+            showMessage('Data berhasil disegarkan.', 'success');
+          }
+          return true;
+        } else {
+          throw new Error(data.error || 'Unknown error loading data');
+        }
+      } catch (error) {
+        console.error('Failed to load data from server:', error.message);
+        
+        if (isInitial) {
+          // Jika ini adalah inisialisasi pertama, tetap tampilkan UI kosong
+          points = 0;
+          history = [];
+          updatePointsDisplay();
+          updateHistoryDisplay();
+        } else {
+          showMessage('Gagal memuat data. Server tidak ditemukan atau koneksi bermasalah.', 'error');
+        }
+        return false;
       }
     }
 
-    // Save data to server with retry
-    async function saveDataToServer() {
+    // Simpan data pengguna ke server
+    async function saveUserData() {
       if (!userId) {
         console.error('Cannot save data: userId is missing');
-        showError('Gagal menyimpan: Pengguna tidak terdeteksi.');
+        showMessage('Gagal menyimpan: Pengguna tidak terdeteksi.', 'error');
         return false;
       }
       
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          console.log(`Saving data for userId: ${userId}, Attempt: ${4 - retries}`);
-          const response = await fetch('/api/save-data', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, points, history })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          
-          if (data.success) {
-            console.log('Data saved to server for userId:', userId);
-            lastSyncTime = Date.now();
-            return true;
-          } else {
-            console.error('Failed to save data to server:', data.error);
-            retries--;
-            if (retries === 0) {
-              showError(`Gagal menyimpan data: ${data.error}`);
-              return false;
-            }
-          }
-        } catch (e) {
-          console.error('Failed to save data to server:', e.message);
-          retries--;
-          if (retries === 0) {
-            showError('Gagal menyimpan data. Server tidak ditemukan atau koneksi bermasalah.');
-            return false;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        console.log(`Saving data for userId: ${userId}, Points: ${points}`);
+        const response = await fetch(`api/save-data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, points, history })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
         }
+        
+        const data = await response.json();
+        if (data.success) {
+          console.log('Data saved to server for userId:', userId);
+          lastSyncTime = Date.now();
+          return true;
+        } else {
+          throw new Error(data.error || 'Unknown error saving data');
+        }
+      } catch (error) {
+        console.error('Failed to save data to server:', error.message);
+        showMessage('Gagal menyimpan data. Server tidak ditemukan atau koneksi bermasalah.', 'error');
+        return false;
       }
     }
 
-    // Refresh data button
+    // Tombol Refresh Data
     document.getElementById('refreshBtn').addEventListener('click', async () => {
       if (!userId) {
         console.warn('No userId available for refresh');
-        showError('Gagal menyegarkan: Buka melalui Telegram.');
+        showMessage('Gagal menyegarkan: Buka melalui Telegram.', 'error');
         return;
       }
       
-      console.log('Refreshing data for userId:', userId);
-      document.getElementById('refreshBtn').disabled = true;
-      document.getElementById('refreshBtn').innerText = 'Menyegarkan...';
+      const refreshBtn = document.getElementById('refreshBtn');
+      refreshBtn.disabled = true;
+      refreshBtn.innerText = 'Menyegarkan...';
       
-      const success = await loadDataFromServer();
+      const success = await loadUserData();
       
-      document.getElementById('refreshBtn').disabled = false;
-      document.getElementById('refreshBtn').innerText = 'Segarkan Data';
+      refreshBtn.disabled = false;
+      refreshBtn.innerText = 'Segarkan Data';
       
       if (!success) {
-        showError('Gagal menyegarkan data. Coba lagi nanti.');
+        showMessage('Gagal menyegarkan data. Coba lagi nanti.', 'error');
       }
     });
 
-    // Load Monetag script dynamically
+    // Load Monetag script
     let monetagLoaded = false;
     function loadMonetagScript() {
       if (monetagLoaded) return;
+      
       const script = document.createElement('script');
       script.src = '//whephiwums.com/sdk.js';
       script.setAttribute('data-zone', '9244919');
       script.setAttribute('data-sdk', 'show_9244919');
       document.head.appendChild(script);
+      
       script.onload = () => {
         console.log('Monetag script loaded');
         monetagLoaded = true;
       };
+      
       script.onerror = () => {
         console.error('Failed to load Monetag script');
-        showError('Gagal memuat iklan. Coba lagi.');
+        showMessage('Gagal memuat iklan. Coba lagi.', 'error');
       };
     }
+    
+    // Muat script Monetag saat halaman dimuat
     loadMonetagScript();
 
-    // Show ad and handle points
+    // Tombol Tonton Iklan
     let adWatching = false;
     document.getElementById('watchAdBtn').addEventListener('click', async (event) => {
       event.preventDefault();
+      
       if (adWatching) {
         console.log('Ad already in progress');
         return;
@@ -336,7 +343,7 @@
 
       if (!userId) {
         console.error('Cannot proceed: userId is missing');
-        showError('Gagal memuat iklan: Pengguna tidak terdeteksi.');
+        showMessage('Gagal memuat iklan: Pengguna tidak terdeteksi.', 'error');
         return;
       }
 
@@ -345,11 +352,10 @@
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      const btn = document.getElementById('watchAdBtn');
-      const errorMsg = document.getElementById('errorMsg');
-      btn.disabled = true;
-      btn.innerText = 'Memuat Iklan...';
-      errorMsg.classList.add('hidden');
+      const adButton = document.getElementById('watchAdBtn');
+      adButton.disabled = true;
+      adButton.innerHTML = '<span>Memuat Iklan...</span>';
+      document.getElementById('errorMsg').classList.add('hidden');
       adWatching = true;
 
       try {
@@ -369,44 +375,47 @@
           throw new Error('Monetag SDK not loaded');
         }
 
+        // Simulasi menonton iklan selama 15 detik
         setTimeout(async () => {
           if (adWatching) {
             // Muat data terbaru terlebih dahulu untuk menghindari konflik
-            await loadDataFromServer();
+            await loadUserData();
             
             // Tambahkan poin
             points += 1;
             const date = new Date().toLocaleString();
             history.push(`Iklan ditonton - +1 Poin pada ${date}`);
-            updatePoints();
-            updateHistory();
+            updatePointsDisplay();
+            updateHistoryDisplay();
             
             // Simpan ke server
-            const saved = await saveDataToServer();
+            const saved = await saveUserData();
             if (!saved) {
-              showError('Poin bertambah, tetapi gagal disinkronkan ke server.');
+              showMessage('Poin bertambah, tetapi gagal disinkronkan ke server.', 'error');
             } else {
-              showSuccess('+1 Poin berhasil ditambahkan!');
+              showMessage('+1 Poin berhasil ditambahkan!', 'success');
             }
 
+            // Animasi koin
             const pointsDisplay = document.getElementById('points');
             pointsDisplay.classList.add('coin-animation');
             setTimeout(() => pointsDisplay.classList.remove('coin-animation'), 1000);
           }
+          
           adWatching = false;
-          btn.disabled = false;
-          btn.innerHTML = '▶️ Tonton Iklan +1 Poin';
+          adButton.disabled = false;
+          adButton.innerHTML = '<span>▶️ Tonton Iklan +1 Poin</span>';
         }, 15000);
-      } catch (e) {
-        console.error('Failed to show ad:', e.message);
-        showError('Gagal memuat iklan. Coba lagi.');
+      } catch (error) {
+        console.error('Failed to show ad:', error.message);
+        showMessage('Gagal memuat iklan. Coba lagi.', 'error');
         adWatching = false;
-        btn.disabled = false;
-        btn.innerHTML = '▶️ Tonton Iklan +1 Poin';
+        adButton.disabled = false;
+        adButton.innerHTML = '<span>▶️ Tonton Iklan +1 Poin</span>';
       }
     });
 
-    // Close button
+    // Tombol Tutup Aplikasi
     document.getElementById('closeBtn').addEventListener('click', () => {
       if (telegramInitialized && window.Telegram && window.Telegram.WebApp) {
         console.log('Closing Telegram Web App');
@@ -417,7 +426,7 @@
       }
     });
 
-    // Detect if user interrupts ad
+    // Deteksi jika pengguna menutup halaman saat iklan sedang ditonton
     window.addEventListener('beforeunload', () => {
       adWatching = false;
     });
@@ -427,10 +436,13 @@
       if (document.visibilityState === 'visible' && userId) {
         if (Date.now() - lastSyncTime > syncInterval) {
           console.log('Tab became visible, syncing data...');
-          loadDataFromServer(false);
+          loadUserData(false);
         }
       }
     });
+
+    // Inisialisasi aplikasi saat halaman dimuat
+    window.addEventListener('load', initializeTelegram);
   </script>
 </body>
 </html>
