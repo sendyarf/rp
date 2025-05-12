@@ -39,6 +39,20 @@
       <p class="text-sm text-gray-600 mt-2">Tonton iklan selama 15 detik hingga selesai untuk mendapatkan poin.</p>
       <p id="errorMsg" class="text-red-500 text-sm mt-2 hidden">Gagal memuat iklan atau iklan ditutup sebelum selesai. Coba lagi.</p>
 
+      <!-- Sync Data Section -->
+      <div class="mt-6">
+        <h2 class="text-lg font-semibold">Sinkronisasi Manual (Cadangan)</h2>
+        <button id="exportBtn" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 px-4 rounded-lg mt-2 transition duration-300">
+          Ekspor Data
+        </button>
+        <div class="mt-2">
+          <input id="importCode" type="text" placeholder="Masukkan kode sinkronisasi" class="w-full border border-gray-300 rounded-lg p-2 text-gray-800">
+          <button id="importBtn" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold py-2 px-4 rounded-lg mt-2 transition duration-300">
+            Impor Data
+          </button>
+        </div>
+      </div>
+
       <!-- History Section -->
       <div class="mt-6">
         <h2 class="text-lg font-semibold">Riwayat Poin</h2>
@@ -216,6 +230,33 @@
         adWatching = false;
         btn.disabled = false;
         btn.innerHTML = '▶️ Tonton Iklan +1 Poin';
+      }
+    });
+
+    // Export data
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const data = { points, history };
+      const code = btoa(JSON.stringify(data));
+      prompt('Salin kode ini dan kirim ke perangkat lain:', code);
+    });
+
+    // Import data
+    document.getElementById('importBtn').addEventListener('click', () => {
+      const code = document.getElementById('importCode').value;
+      try {
+        const data = JSON.parse(atob(code));
+        if (data.points >= 0 && Array.isArray(data.history)) {
+          points = data.points;
+          history = data.history;
+          updatePoints();
+          updateHistory();
+          alert('Data berhasil diimpor!');
+          document.getElementById('importCode').value = '';
+        } else {
+          alert('Kode tidak valid.');
+        }
+      } catch (e) {
+        alert('Kode tidak valid atau rusak.');
       }
     });
 
