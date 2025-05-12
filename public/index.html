@@ -149,6 +149,9 @@
             },
             body: JSON.stringify({ userId })
           });
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
           const data = await response.json();
           if (data.success && data.data) {
             points = data.data.points || 0;
@@ -166,10 +169,10 @@
             return false;
           }
         } catch (e) {
-          console.error('Failed to load data from JSON:', e);
+          console.error('Failed to load data from JSON:', e.message);
           retries--;
           if (retries === 0) {
-            showError('Gagal memuat data. Periksa koneksi internet.');
+            showError('Gagal memuat data. Server tidak ditemukan atau koneksi bermasalah.');
             if (isInitial) {
               updatePoints();
               updateHistory();
@@ -197,6 +200,9 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, points, history })
           });
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
           const data = await response.json();
           if (data.success) {
             console.log('Data saved to JSON for userId:', userId);
@@ -210,10 +216,10 @@
             }
           }
         } catch (e) {
-          console.error('Failed to save data to JSON:', e);
+          console.error('Failed to save data to JSON:', e.message);
           retries--;
           if (retries === 0) {
-            showError('Gagal menyimpan data. Periksa koneksi internet.');
+            showError('Gagal menyimpan data. Server tidak ditemukan atau koneksi bermasalah.');
             return false;
           }
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -233,7 +239,7 @@
       if (success) {
         showError('Data berhasil disegarkan.');
       } else {
-        showError('Gagal menyegarkan data. Coba lagi.');
+        showError('Gagal menyegarkan data. Coba lagi nanti.');
       }
     });
 
@@ -321,7 +327,7 @@
           btn.innerHTML = '▶️ Tonton Iklan +1 Poin';
         }, 15000);
       } catch (e) {
-        console.error('Failed to show ad:', e);
+        console.error('Failed to show ad:', e.message);
         showError('Gagal memuat iklan. Coba lagi.');
         adWatching = false;
         btn.disabled = false;
